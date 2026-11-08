@@ -9,25 +9,52 @@ Gem::Specification.new do |spec|
   spec.email = ["joseaugusto.881@outlook.com"]
   spec.summary = "Write, test and generate opengrep/semgrep rules: web editor, CLI and CVE-to-rule drafts"
   spec.description = <<~DESC
-    Trapline sets traps for vulnerable code: it takes you from a CVE to a tested
-    opengrep/semgrep rule.
+    Trapline is a web editor and CLI for writing and testing opengrep/semgrep
+    rules, plus a generator that turns a CVE into rule drafts with test code.
+    Test files stay in the standard --test format.
 
-    The web editor validates the rule YAML as you type, runs it against test code
-    and highlights each finding. You mark which lines must or must not match by
-    clicking the margin or accepting results, and Trapline writes the ruleid/ok
-    annotations for you, so the test file stays in the standard --test format
-    that opengrep and semgrep read.
+    INSTALL
 
-    Give it a CVE or GHSA id and it looks the advisory up in NVD and OSV, then
-    drafts rules with test code: a template for the vulnerability class (CWE), a
-    check for vulnerable runtime images (PHP, Python, Node.js, Ruby, Go, .NET) in
-    Dockerfiles, Compose, Kubernetes, Helm and CI files, a rule that finds usage
-    of the affected package, and a taint skeleton for 14 languages. Notes explain
-    what was inferred and what still needs review.
+      gem install trapline
 
-    The CLI validates rules, runs their tests in CI and generates drafts. It runs
-    standalone (trapline server), as a Rack app or mounted in Rails, with no
-    runtime dependencies besides Ruby and the opengrep or semgrep binary.
+    Trapline needs an engine on your PATH, opengrep (recommended) or semgrep:
+
+      curl -fsSL https://raw.githubusercontent.com/opengrep/opengrep/main/install.sh | bash
+      pip install semgrep
+
+    The opengrep installer puts the binary in ~/.opengrep/cli/latest/. Add it to
+    your PATH or pass --engine-bin. Check the setup with:
+
+      trapline version
+
+    USAGE
+
+    Web editor (http://127.0.0.1:9292):
+
+      trapline server -r ./rules
+
+    Write the rule, paste vulnerable and fixed code, and click the margin to mark
+    the lines that must or must not match. Trapline writes the ruleid/ok
+    annotations and reruns as you type.
+
+    Rule drafts from a CVE or GHSA (looked up in NVD and OSV):
+
+      trapline cve CVE-2024-4577                           # list the drafts
+      trapline cve CVE-2024-4577 --save --pick 2 -r ./rules
+
+    Validate and test rules (exits 1 on failure, for CI):
+
+      trapline validate --engine rules/*.yaml
+      trapline test -r ./rules
+      trapline run rules/my-rule.yaml app/models/user.rb
+
+    Rails: add gem "trapline" to the Gemfile, then
+
+      bin/rails generate trapline:install    # editor at /trapline
+      bin/rails trapline:test
+
+    It also runs as a Rack app (run Trapline::Web::App.new in config.ru). No
+    runtime dependencies besides Ruby 3.3+ and the engine binary.
   DESC
   spec.homepage = "https://github.com/JAugusto42/trapline"
   spec.license = "MIT"
