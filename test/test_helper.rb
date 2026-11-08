@@ -8,6 +8,9 @@ require "stringio"
 
 FIXTURES = File.expand_path("fixtures", __dir__)
 
+# Engine-bound test classes call `parallelize_me!`: each run is a separate
+# opengrep process, so they overlap well. Classes that change Trapline.config
+# stay serial, and minitest runs those before the parallel ones.
 module EngineHelper
   def engine
     @engine ||= Trapline::Engine.detect

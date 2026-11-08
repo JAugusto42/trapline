@@ -4,6 +4,7 @@ require "test_helper"
 
 class TestGenerator < Minitest::Test
   include EngineHelper
+  parallelize_me!
 
   def generator
     Trapline::Generator.new(client: Trapline::Cve::Client.new(http: FIXTURE_HTTP), offline: false)

@@ -6,6 +6,7 @@ require "test_helper"
 # test code. When you add a template, this test covers it.
 class TestTemplates < Minitest::Test
   include EngineHelper
+  parallelize_me!
 
   def test_templates_load
     refute_empty Trapline::Templates.all
@@ -45,10 +46,12 @@ class TestTemplates < Minitest::Test
     end
   end
 
-  def test_starters
-    require_engine!
-    taint_langs = %w[java go typescript php csharp kotlin scala rust c cpp swift].map { |l| ["taint", l] }
-    (%w[search patterns taint].product(%w[ruby python javascript]) + taint_langs).each do |kind, lang|
+  STARTERS = %w[search patterns taint].product(%w[ruby python javascript]) +
+             %w[java go typescript php csharp kotlin scala rust c cpp swift].map { |l| ["taint", l] }
+
+  STARTERS.each do |kind, lang|
+    define_method("test_starter_#{kind}_#{lang}") do
+      require_engine!
       s = Trapline::Templates.starter(kind, language: lang, id: "s")
       res = engine.run(s[:yaml], code: s[:test_code], language: s[:language])
       assert res.ok?, "#{kind}/#{lang}: #{res.errors}"

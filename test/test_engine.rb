@@ -4,6 +4,7 @@ require "test_helper"
 
 class TestEngine < Minitest::Test
   include EngineHelper
+  parallelize_me!
 
   RULE = <<~YAML
     rules:
