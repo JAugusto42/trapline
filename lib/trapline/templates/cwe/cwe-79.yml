@@ -1,0 +1,164 @@
+cwe: CWE-79
+name: "Improper Neutralization of Input During Web Page Generation ('Cross-site Scripting')"
+title: Cross-site scripting (XSS)
+owasp: ["A03:2021 - Injection"]
+keywords: ["cross-site scripting", "xss", "inject arbitrary web script", "html injection"]
+message: >-
+  Untrusted input is written to an HTML response without escaping, which can
+  lead to cross-site scripting. Escape the value or use the framework's
+  auto-escaping templates.
+languages:
+  ruby:
+    rule: |
+      mode: taint
+      pattern-sources:
+        - pattern: params
+        - pattern: cookies
+      pattern-sanitizers:
+        - pattern: ERB::Util.html_escape(...)
+        - pattern: CGI.escapeHTML(...)
+        - pattern: sanitize(...)
+        - pattern: $H.sanitize(...)
+        - pattern: h(...)
+      pattern-sinks:
+        - patterns:
+            - pattern-either:
+                - pattern: $X.html_safe
+                - pattern: raw($X)
+                - pattern: $H.raw($X)
+                - pattern: "render(..., inline: $X, ...)"
+            - focus-metavariable: $X
+    test: |
+      class SearchController < ApplicationController
+        def show
+          # ruleid: __RULE_ID__
+          render html: "<h1>#{params[:q]}</h1>".html_safe
+          # ruleid: __RULE_ID__
+          render inline: "<p>#{params[:q]}</p>"
+          # ok: __RULE_ID__
+          render html: "<h1>#{ERB::Util.html_escape(params[:q])}</h1>".html_safe
+        end
+      end
+  python:
+    rule: |
+      mode: taint
+      pattern-sources:
+        - pattern: flask.request.$ANY
+      pattern-sanitizers:
+        - pattern: markupsafe.escape(...)
+        - pattern: flask.escape(...)
+        - pattern: html.escape(...)
+      pattern-sinks:
+        - pattern: flask.make_response(...)
+        - pattern: flask.Response(...)
+        - pattern: markupsafe.Markup(...)
+        - pattern: flask.render_template_string(...)
+    test: |
+      from flask import request, make_response
+      from markupsafe import escape
+
+      def hello():
+          name = request.args.get("name")
+          # ruleid: __RULE_ID__
+          return make_response("<h1>Hello " + name + "</h1>")
+
+      def hello_safe():
+          name = request.args.get("name")
+          # ok: __RULE_ID__
+          return make_response("<h1>Hello " + escape(name) + "</h1>")
+  javascript:
+    rule: |
+      mode: taint
+      pattern-sources:
+        - pattern: $REQ.query
+        - pattern: $REQ.body
+        - pattern: $REQ.params
+        - pattern: location.hash
+        - pattern: location.search
+      pattern-sanitizers:
+        - pattern: escapeHtml(...)
+        - pattern: $L.escape(...)
+        - pattern: DOMPurify.sanitize(...)
+        - pattern: encodeURIComponent(...)
+      pattern-sinks:
+        - pattern: $RES.send(...)
+        - pattern: $RES.write(...)
+        - pattern: document.write(...)
+        - patterns:
+            - pattern-either:
+                - pattern: $EL.innerHTML = $X
+                - pattern: $EL.outerHTML = $X
+                - pattern: $EL.insertAdjacentHTML($POS, $X)
+            - focus-metavariable: $X
+    test: |
+      app.get("/hello", (req, res) => {
+        // ruleid: __RULE_ID__
+        res.send("<h1>Hello " + req.query.name + "</h1>");
+        // ok: __RULE_ID__
+        res.send("<h1>Hello " + escapeHtml(req.query.name) + "</h1>");
+      });
+
+      function render() {
+        // ruleid: __RULE_ID__
+        document.getElementById("out").innerHTML = location.hash.slice(1);
+        // ok: __RULE_ID__
+        document.getElementById("out").textContent = location.hash.slice(1);
+      }
+  java:
+    rule: |
+      mode: taint
+      pattern-sources:
+        - pattern: (javax.servlet.http.HttpServletRequest $REQ).$GET(...)
+        - pattern: (jakarta.servlet.http.HttpServletRequest $REQ).$GET(...)
+      pattern-sanitizers:
+        - pattern: Encode.$FOR(...)
+        - pattern: StringEscapeUtils.escapeHtml4(...)
+        - pattern: HtmlUtils.htmlEscape(...)
+      pattern-sinks:
+        - pattern: $RESP.getWriter().$WRITE(...)
+        - pattern: (java.io.PrintWriter $W).$WRITE(...)
+    test: |
+      import javax.servlet.http.HttpServletRequest;
+      import javax.servlet.http.HttpServletResponse;
+      import org.owasp.encoder.Encode;
+
+      public class HelloServlet {
+          public void doGet(HttpServletRequest request, HttpServletResponse response) throws Exception {
+              String name = request.getParameter("name");
+              // ruleid: __RULE_ID__
+              response.getWriter().write("<h1>Hello " + name + "</h1>");
+              // ok: __RULE_ID__
+              response.getWriter().write("<h1>Hello " + Encode.forHtml(name) + "</h1>");
+          }
+      }
+  go:
+    rule: |
+      mode: taint
+      pattern-sources:
+        - pattern: '($R : *http.Request).URL.Query().Get(...)'
+        - pattern: '($R : *http.Request).FormValue(...)'
+      pattern-sanitizers:
+        - pattern: html.EscapeString(...)
+        - pattern: template.HTMLEscapeString(...)
+      pattern-sinks:
+        - pattern: template.HTML(...)
+        - pattern: '($W : http.ResponseWriter).Write(...)'
+        - pattern: 'fmt.Fprintf(($W : http.ResponseWriter), ...)'
+        - pattern: 'fmt.Fprint(($W : http.ResponseWriter), ...)'
+        - pattern: 'io.WriteString(($W : http.ResponseWriter), ...)'
+    test: |
+      package main
+
+      import (
+      	"fmt"
+      	"html"
+      	"net/http"
+      )
+
+      func hello(w http.ResponseWriter, r *http.Request) {
+      	name := r.URL.Query().Get("name")
+      	// ruleid: __RULE_ID__
+      	fmt.Fprintf(w, "<h1>Hello %s</h1>", name)
+      	// ok: __RULE_ID__
+      	fmt.Fprintf(w, "<h1>Hello %s</h1>", html.EscapeString(name))
+      }

@@ -1,0 +1,87 @@
+cwe: CWE-611
+name: "Improper Restriction of XML External Entity Reference"
+title: XML external entities (XXE)
+owasp: ["A05:2021 - Security Misconfiguration"]
+keywords: ["xml external entity", "xxe", "external entities", "dtd"]
+message: >-
+  The XML parser is created without disabling DTDs/external entities, which
+  allows XXE attacks. Disable doctype declarations or external entity
+  resolution before parsing.
+languages:
+  java:
+    rule: |
+      patterns:
+        - pattern-either:
+            - pattern-inside: |
+                $F = DocumentBuilderFactory.newInstance();
+                ...
+            - pattern-inside: |
+                $F = SAXParserFactory.newInstance();
+                ...
+            - pattern-inside: |
+                $F = XMLInputFactory.newInstance();
+                ...
+        - pattern-not-inside: |
+            $F = $FACTORY.newInstance();
+            ...
+            $F.setFeature("http://apache.org/xml/features/disallow-doctype-decl", true);
+            ...
+        - pattern-not-inside: |
+            $F = $FACTORY.newInstance();
+            ...
+            $F.setProperty(XMLInputFactory.SUPPORT_DTD, false);
+            ...
+        - pattern-either:
+            - pattern: $F.newDocumentBuilder()
+            - pattern: $F.newSAXParser()
+            - pattern: $F.createXMLStreamReader(...)
+    test: |
+      import javax.xml.parsers.DocumentBuilder;
+      import javax.xml.parsers.DocumentBuilderFactory;
+
+      public class XmlParser {
+          public void unsafe() throws Exception {
+              DocumentBuilderFactory dbf = DocumentBuilderFactory.newInstance();
+              // ruleid: __RULE_ID__
+              DocumentBuilder db = dbf.newDocumentBuilder();
+          }
+
+          public void safe() throws Exception {
+              DocumentBuilderFactory dbf = DocumentBuilderFactory.newInstance();
+              dbf.setFeature("http://apache.org/xml/features/disallow-doctype-decl", true);
+              // ok: __RULE_ID__
+              DocumentBuilder db = dbf.newDocumentBuilder();
+          }
+      }
+  python:
+    rule: |
+      pattern-either:
+        - pattern: lxml.etree.XMLParser(..., resolve_entities=True, ...)
+        - pattern: xml.sax.make_parser(...)
+        - pattern: xml.dom.pulldom.parse(...)
+    test: |
+      from lxml import etree
+      import defusedxml.ElementTree as SafeET
+
+      # ruleid: __RULE_ID__
+      parser = etree.XMLParser(resolve_entities=True)
+      # ok: __RULE_ID__
+      parser = etree.XMLParser(resolve_entities=False, no_network=True)
+      # ok: __RULE_ID__
+      tree = SafeET.fromstring("<a/>")
+  ruby:
+    rule: |
+      pattern-either:
+        - pattern: Nokogiri::XML(..., Nokogiri::XML::ParseOptions::NOENT, ...)
+        - pattern: Nokogiri::XML(..., Nokogiri::XML::ParseOptions::DTDLOAD, ...)
+        - pattern: $CFG.noent
+        - pattern: $CFG.dtdload
+    test: |
+      class ImportController < ApplicationController
+        def create
+          # ruleid: __RULE_ID__
+          doc = Nokogiri::XML(request.body.read) { |config| config.noent }
+          # ok: __RULE_ID__
+          doc = Nokogiri::XML(request.body.read) { |config| config.nonet }
+        end
+      end

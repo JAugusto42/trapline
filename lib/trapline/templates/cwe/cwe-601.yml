@@ -1,0 +1,124 @@
+cwe: CWE-601
+name: "URL Redirection to Untrusted Site ('Open Redirect')"
+title: Open redirect
+owasp: ["A01:2021 - Broken Access Control"]
+keywords: ["open redirect", "url redirection", "redirect to arbitrary", "untrusted site"]
+message: >-
+  The application redirects to a URL taken from the request (open redirect).
+  Redirect only to relative paths or to an allowlist of hosts.
+languages:
+  ruby:
+    rule: |
+      mode: taint
+      pattern-sources:
+        - pattern: params
+        - pattern: cookies
+        - pattern: request.referer
+      pattern-sinks:
+        - patterns:
+            - pattern: redirect_to($U, ...)
+            - pattern-not: "redirect_to($U, ..., allow_other_host: false, ...)"
+            - focus-metavariable: $U
+    test: |
+      class SessionsController < ApplicationController
+        def create
+          # ruleid: __RULE_ID__
+          redirect_to params[:return_to]
+          # ok: __RULE_ID__
+          redirect_to params[:return_to], allow_other_host: false
+          # ok: __RULE_ID__
+          redirect_to root_path
+        end
+      end
+  python:
+    rule: |
+      mode: taint
+      pattern-sources:
+        - pattern: flask.request.$ANY
+        - patterns:
+            - pattern-inside: |
+                def $VIEW(request, ...):
+                  ...
+            - pattern: request.$ANY
+      pattern-sanitizers:
+        - pattern: url_has_allowed_host_and_scheme(...)
+      pattern-sinks:
+        - pattern: flask.redirect(...)
+        - pattern: django.shortcuts.redirect(...)
+        - pattern: django.http.HttpResponseRedirect(...)
+    test: |
+      from flask import request, redirect, url_for
+
+      def login():
+          # ruleid: __RULE_ID__
+          return redirect(request.args.get("next"))
+
+      def logout():
+          # ok: __RULE_ID__
+          return redirect(url_for("index"))
+  javascript:
+    rule: |
+      mode: taint
+      pattern-sources:
+        - pattern: $REQ.query
+        - pattern: $REQ.body
+        - pattern: $REQ.params
+      pattern-sinks:
+        - patterns:
+            - pattern-either:
+                - pattern: $RES.redirect($U)
+                - pattern: $RES.redirect($STATUS, $U)
+            - focus-metavariable: $U
+    test: |
+      app.get("/login", (req, res) => {
+        // ruleid: __RULE_ID__
+        res.redirect(req.query.next);
+      });
+
+      app.get("/logout", (req, res) => {
+        // ok: __RULE_ID__
+        res.redirect("/");
+      });
+  java:
+    rule: |
+      mode: taint
+      pattern-sources:
+        - pattern: (javax.servlet.http.HttpServletRequest $REQ).$GET(...)
+        - pattern: (jakarta.servlet.http.HttpServletRequest $REQ).$GET(...)
+      pattern-sinks:
+        - pattern: (javax.servlet.http.HttpServletResponse $RESP).sendRedirect(...)
+        - pattern: (jakarta.servlet.http.HttpServletResponse $RESP).sendRedirect(...)
+    test: |
+      import javax.servlet.http.HttpServletRequest;
+      import javax.servlet.http.HttpServletResponse;
+
+      public class LoginServlet {
+          public void doGet(HttpServletRequest request, HttpServletResponse response) throws Exception {
+              // ruleid: __RULE_ID__
+              response.sendRedirect(request.getParameter("next"));
+              // ok: __RULE_ID__
+              response.sendRedirect("/home");
+          }
+      }
+  go:
+    rule: |
+      mode: taint
+      pattern-sources:
+        - pattern: '($R : *http.Request).URL.Query().Get(...)'
+        - pattern: '($R : *http.Request).FormValue(...)'
+      pattern-sinks:
+        - patterns:
+            - pattern: http.Redirect($W, $REQ, $U, ...)
+            - focus-metavariable: $U
+    test: |
+      package main
+
+      import "net/http"
+
+      func login(w http.ResponseWriter, r *http.Request) {
+      	next := r.URL.Query().Get("next")
+      	// ruleid: __RULE_ID__
+      	http.Redirect(w, r, next, http.StatusFound)
+      	// ok: __RULE_ID__
+      	http.Redirect(w, r, "/home", http.StatusFound)
+      }

@@ -1,0 +1,123 @@
+cwe: CWE-502
+name: "Deserialization of Untrusted Data"
+title: Insecure deserialization
+owasp: ["A08:2021 - Software and Data Integrity Failures"]
+keywords: ["deserialization", "deserialize", "unserialize", "untrusted data", "gadget chain", "object injection", "pickle", "marshal"]
+message: >-
+  Untrusted data is deserialized with a format that can instantiate arbitrary
+  objects, which can lead to remote code execution. Use a data-only format
+  (JSON) or a safe loader.
+languages:
+  ruby:
+    rule: |
+      mode: taint
+      pattern-sources:
+        - pattern: params
+        - pattern: cookies
+        - pattern: request.body
+        - pattern: request.raw_post
+      pattern-sinks:
+        - pattern: Marshal.load(...)
+        - pattern: Marshal.restore(...)
+        - pattern: YAML.unsafe_load(...)
+        - pattern: Psych.unsafe_load(...)
+        - pattern: Oj.load(...)
+    test: |
+      class SessionsController < ApplicationController
+        def restore
+          # ruleid: __RULE_ID__
+          state = Marshal.load(Base64.decode64(cookies[:state]))
+          # ruleid: __RULE_ID__
+          config = YAML.unsafe_load(request.body.read)
+          # ok: __RULE_ID__
+          state = JSON.parse(Base64.decode64(cookies[:state]))
+        end
+      end
+  python:
+    rule: |
+      mode: taint
+      pattern-sources:
+        - pattern: flask.request.$ANY
+        - patterns:
+            - pattern-inside: |
+                def $VIEW(request, ...):
+                  ...
+            - pattern: request.$ANY
+      pattern-sinks:
+        - pattern: pickle.loads(...)
+        - pattern: pickle.load(...)
+        - pattern: cPickle.loads(...)
+        - pattern: dill.loads(...)
+        - pattern: marshal.loads(...)
+        - pattern: jsonpickle.decode(...)
+        - pattern: yaml.unsafe_load(...)
+        - pattern: yaml.load(..., Loader=yaml.Loader, ...)
+        - pattern: yaml.load(..., Loader=yaml.UnsafeLoader, ...)
+        - patterns:
+            - pattern: yaml.load($DATA)
+            - focus-metavariable: $DATA
+    test: |
+      import base64
+      import json
+      import pickle
+      import yaml
+      from flask import request
+
+      def restore():
+          raw = base64.b64decode(request.cookies.get("state"))
+          # ruleid: __RULE_ID__
+          state = pickle.loads(raw)
+          # ruleid: __RULE_ID__
+          config = yaml.load(request.data, Loader=yaml.Loader)
+          # ok: __RULE_ID__
+          config = yaml.safe_load(request.data)
+          # ok: __RULE_ID__
+          state = json.loads(raw)
+  javascript:
+    rule: |
+      mode: taint
+      pattern-sources:
+        - pattern: $REQ.query
+        - pattern: $REQ.body
+        - pattern: $REQ.params
+        - pattern: $REQ.cookies
+      pattern-sinks:
+        - pattern: $SER.unserialize(...)
+        - pattern: require("node-serialize").unserialize(...)
+        - pattern: $FUNSTER.deepDeserialize(...)
+    test: |
+      const serialize = require("node-serialize");
+
+      app.post("/restore", (req, res) => {
+        // ruleid: __RULE_ID__
+        const state = serialize.unserialize(Buffer.from(req.cookies.state, "base64").toString());
+        // ok: __RULE_ID__
+        const safe = JSON.parse(Buffer.from(req.cookies.state, "base64").toString());
+        res.json(safe);
+      });
+  java:
+    rule: |
+      mode: taint
+      pattern-sources:
+        - pattern: (javax.servlet.http.HttpServletRequest $REQ).$GET(...)
+        - pattern: (jakarta.servlet.http.HttpServletRequest $REQ).$GET(...)
+      pattern-sinks:
+        - pattern: new ObjectInputStream(...)
+        - pattern: new java.beans.XMLDecoder(...)
+        - pattern: new XMLDecoder(...)
+        - pattern: (com.thoughtworks.xstream.XStream $X).fromXML(...)
+        - pattern: (XStream $X).fromXML(...)
+    test: |
+      import javax.servlet.http.HttpServletRequest;
+      import java.io.ObjectInputStream;
+      import com.fasterxml.jackson.databind.ObjectMapper;
+
+      public class RestoreServlet {
+          public void doPost(HttpServletRequest request) throws Exception {
+              // ruleid: __RULE_ID__
+              ObjectInputStream in = new ObjectInputStream(request.getInputStream());
+              Object state = in.readObject();
+              // ok: __RULE_ID__
+              Object safe = new ObjectMapper().readTree(request.getInputStream());
+          }
+      }

@@ -1,0 +1,131 @@
+cwe: CWE-94
+name: "Improper Control of Generation of Code ('Code Injection')"
+title: Code injection
+owasp: ["A03:2021 - Injection"]
+# Only the vulnerability class: "remote code execution"/"arbitrary code" describe an
+# impact shared by memory corruption, deserialization, command injection...
+keywords: ["code injection", "eval", "template injection", "ssti"]
+message: >-
+  Untrusted input is evaluated as code. Never pass user-controlled data to
+  eval-like functions; map inputs to an allowlist of operations instead.
+languages:
+  ruby:
+    rule: |
+      mode: taint
+      pattern-sources:
+        - pattern: params
+        - pattern: cookies
+      pattern-sinks:
+        - pattern: eval(...)
+        - pattern: $O.instance_eval(...)
+        - pattern: $O.class_eval(...)
+        - pattern: $O.module_eval(...)
+        - pattern: $X.constantize
+        - pattern: $X.safe_constantize
+        - pattern: ERB.new(...)
+        - patterns:
+            - pattern-either:
+                - pattern: $O.send($M, ...)
+                - pattern: $O.public_send($M, ...)
+            - focus-metavariable: $M
+    test: |
+      class CalcController < ApplicationController
+        def run
+          # ruleid: __RULE_ID__
+          result = eval(params[:expr])
+          # ruleid: __RULE_ID__
+          klass = params[:type].constantize
+          # ruleid: __RULE_ID__
+          report.public_send(params[:format])
+          # ok: __RULE_ID__
+          klass = { "user" => User, "admin" => Admin }.fetch(params[:type])
+        end
+      end
+  python:
+    rule: |
+      mode: taint
+      pattern-sources:
+        - pattern: flask.request.$ANY
+        - patterns:
+            - pattern-inside: |
+                def $VIEW(request, ...):
+                  ...
+            - pattern: request.$ANY
+      pattern-sinks:
+        - pattern: eval(...)
+        - pattern: exec(...)
+        - pattern: compile(...)
+        - pattern: flask.render_template_string(...)
+        - pattern: jinja2.Template(...)
+        - pattern: importlib.import_module(...)
+    test: |
+      import ast
+      from flask import request, render_template_string
+
+      def calc():
+          expr = request.args.get("expr")
+          # ruleid: __RULE_ID__
+          result = eval(expr)
+          # ruleid: __RULE_ID__
+          page = render_template_string("<p>" + expr + "</p>")
+          # ok: __RULE_ID__
+          value = ast.literal_eval(expr)
+  javascript:
+    rule: |
+      mode: taint
+      pattern-sources:
+        - pattern: $REQ.query
+        - pattern: $REQ.body
+        - pattern: $REQ.params
+      pattern-sinks:
+        - pattern: eval(...)
+        - pattern: Function(...)
+        - pattern: new Function(...)
+        - pattern: $VM.runInNewContext(...)
+        - pattern: $VM.runInThisContext(...)
+        - patterns:
+            - pattern-either:
+                - pattern: setTimeout($CODE, ...)
+                - pattern: setInterval($CODE, ...)
+            - focus-metavariable: $CODE
+    test: |
+      app.get("/calc", (req, res) => {
+        // ruleid: __RULE_ID__
+        const result = eval(req.query.expr);
+        // ruleid: __RULE_ID__
+        const fn = new Function("x", req.body.code);
+        // ok: __RULE_ID__
+        const n = JSON.parse(req.query.expr);
+        res.json({ result, n });
+      });
+  java:
+    rule: |
+      mode: taint
+      pattern-sources:
+        - pattern: (javax.servlet.http.HttpServletRequest $REQ).$GET(...)
+        - pattern: (jakarta.servlet.http.HttpServletRequest $REQ).$GET(...)
+        - patterns:
+            - pattern-inside: |
+                $RET $METHOD(..., @RequestParam $T $P, ...) { ... }
+            - pattern: $P
+      pattern-sinks:
+        - pattern: (javax.script.ScriptEngine $E).eval(...)
+        - pattern: (ScriptEngine $E).eval(...)
+        - pattern: (ExpressionParser $P).parseExpression(...)
+        - pattern: (SpelExpressionParser $P).parseExpression(...)
+        - pattern: Ognl.getValue(...)
+    test: |
+      import javax.servlet.http.HttpServletRequest;
+      import javax.script.ScriptEngine;
+      import javax.script.ScriptEngineManager;
+
+      public class CalcServlet {
+          public void doGet(HttpServletRequest request) throws Exception {
+              String expr = request.getParameter("expr");
+              ScriptEngine engine = new ScriptEngineManager().getEngineByName("js");
+              // ruleid: __RULE_ID__
+              Object result = engine.eval(expr);
+              // ok: __RULE_ID__
+              Object fixed = engine.eval("1 + 1");
+          }
+      }

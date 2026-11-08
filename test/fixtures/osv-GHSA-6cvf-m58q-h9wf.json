@@ -1,0 +1,9 @@
+{
+  "id": "GHSA-6cvf-m58q-h9wf",
+  "summary": "SQL injection in Django",
+  "details": "An issue was discovered in Django 1.11.x before 1.11.23, 2.1.x before 2.1.11, and 2.2.x before 2.2.4. Due to an error in shallow key transformation, key and index lookups for django.contrib.postgres.fields.JSONField, and key lookups for django.contrib.postgres.fields.HStoreField, were subject to SQL injection.",
+  "aliases": ["CVE-2019-14234"],
+  "affected": [{"package": {"ecosystem": "PyPI", "name": "django"}, "ranges": [{"type": "ECOSYSTEM", "events": [{"introduced": "2.2"}, {"fixed": "2.2.4"}]}]}],
+  "references": [{"type": "WEB", "url": "https://www.djangoproject.com/weblog/2019/aug/01/security-releases/"}],
+  "database_specific": {"cwe_ids": ["CWE-89"], "severity": "CRITICAL"}
+}

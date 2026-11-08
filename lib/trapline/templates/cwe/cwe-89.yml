@@ -1,0 +1,189 @@
+cwe: CWE-89
+name: "Improper Neutralization of Special Elements used in an SQL Command ('SQL Injection')"
+title: SQL injection
+owasp: ["A03:2021 - Injection"]
+keywords: ["sql injection", "sqli", "sql command"]
+message: >-
+  Untrusted input flows into a SQL query built from strings. Use parameterized
+  queries / bind parameters instead of string concatenation or interpolation.
+languages:
+  ruby:
+    rule: |
+      mode: taint
+      pattern-sources:
+        - pattern: params
+        - pattern: cookies
+      pattern-sanitizers:
+        - pattern: $X.to_i
+        - pattern: $M.sanitize_sql(...)
+        - pattern: $M.connection.quote(...)
+      pattern-sinks:
+        - patterns:
+            - pattern-either:
+                - pattern: $M.where($Q, ...)
+                - pattern: $M.order($Q, ...)
+                - pattern: $M.group($Q, ...)
+                - pattern: $M.having($Q, ...)
+                - pattern: $M.find_by_sql($Q, ...)
+                - pattern: $M.select($Q, ...)
+                - pattern: $M.pluck($Q, ...)
+                - pattern: $M.exists?($Q, ...)
+                - pattern: $M.execute($Q, ...)
+                - pattern: $M.exec_query($Q, ...)
+            - focus-metavariable: $Q
+            - pattern-not: "{...}"
+    test: |
+      class UsersController < ApplicationController
+        def index
+          # ruleid: __RULE_ID__
+          @users = User.where("name = '#{params[:name]}'")
+          # ruleid: __RULE_ID__
+          @users = User.order(params[:sort])
+          # ok: __RULE_ID__
+          @users = User.where(name: params[:name])
+          # ok: __RULE_ID__
+          @users = User.where("name = ?", params[:name])
+          # ok: __RULE_ID__
+          @users = User.where("id = #{params[:id].to_i}")
+        end
+      end
+  python:
+    rule: |
+      mode: taint
+      pattern-sources:
+        - pattern: flask.request.$ANY
+        - patterns:
+            - pattern-inside: |
+                def $VIEW(request, ...):
+                  ...
+            - pattern: request.$ANY
+      pattern-sanitizers:
+        - pattern: int(...)
+      pattern-sinks:
+        - patterns:
+            - pattern-either:
+                - pattern: $CUR.execute($Q, ...)
+                - pattern: $CUR.executemany($Q, ...)
+                - pattern: $M.objects.raw($Q, ...)
+                - pattern: sqlalchemy.text($Q, ...)
+            - focus-metavariable: $Q
+    test: |
+      from flask import request
+
+      def search(cursor):
+          name = request.args.get("name")
+          # ruleid: __RULE_ID__
+          cursor.execute("SELECT * FROM users WHERE name = '%s'" % name)
+          # ruleid: __RULE_ID__
+          cursor.execute(f"SELECT * FROM users WHERE name = '{name}'")
+          # ok: __RULE_ID__
+          cursor.execute("SELECT * FROM users WHERE name = %s", (name,))
+  javascript:
+    rule: |
+      mode: taint
+      pattern-sources:
+        - pattern: $REQ.query
+        - pattern: $REQ.body
+        - pattern: $REQ.params
+      pattern-sanitizers:
+        - pattern: parseInt(...)
+        - pattern: Number(...)
+      pattern-sinks:
+        - patterns:
+            - pattern-either:
+                - pattern: $DB.query($Q, ...)
+                - pattern: $DB.execute($Q, ...)
+                - pattern: $DB.raw($Q, ...)
+                - pattern: $DB.$RAW`...`
+            - focus-metavariable: $Q
+    test: |
+      app.get("/users", (req, res) => {
+        // ruleid: __RULE_ID__
+        db.query("SELECT * FROM users WHERE name = '" + req.query.name + "'");
+        // ruleid: __RULE_ID__
+        db.query(`SELECT * FROM users WHERE id = ${req.params.id}`);
+        // ok: __RULE_ID__
+        db.query("SELECT * FROM users WHERE name = ?", [req.query.name]);
+        // ok: __RULE_ID__
+        db.query("SELECT * FROM users WHERE id = " + parseInt(req.query.id));
+      });
+  java:
+    rule: |
+      mode: taint
+      pattern-sources:
+        - pattern: (javax.servlet.http.HttpServletRequest $REQ).$GET(...)
+        - pattern: (jakarta.servlet.http.HttpServletRequest $REQ).$GET(...)
+        - patterns:
+            - pattern-inside: |
+                $RET $METHOD(..., @RequestParam $T $P, ...) { ... }
+            - pattern: $P
+      pattern-sanitizers:
+        - pattern: Integer.parseInt(...)
+        - pattern: Long.parseLong(...)
+      pattern-sinks:
+        - patterns:
+            - pattern-either:
+                - pattern: $S.executeQuery($Q)
+                - pattern: $S.executeUpdate($Q)
+                - pattern: $S.execute($Q)
+                - pattern: $S.addBatch($Q)
+                - pattern: $C.prepareStatement($Q, ...)
+                - pattern: $EM.createQuery($Q, ...)
+                - pattern: $EM.createNativeQuery($Q, ...)
+                - pattern: $JDBC.queryForObject($Q, ...)
+                - pattern: $JDBC.queryForList($Q, ...)
+            - focus-metavariable: $Q
+    test: |
+      import javax.servlet.http.HttpServletRequest;
+      import java.sql.Connection;
+      import java.sql.PreparedStatement;
+      import java.sql.Statement;
+
+      public class UserDao {
+          public void find(HttpServletRequest request, Connection conn) throws Exception {
+              String name = request.getParameter("name");
+              Statement st = conn.createStatement();
+              // ruleid: __RULE_ID__
+              st.executeQuery("SELECT * FROM users WHERE name = '" + name + "'");
+              // ok: __RULE_ID__
+              PreparedStatement ps = conn.prepareStatement("SELECT * FROM users WHERE name = ?");
+              ps.setString(1, name);
+              ps.executeQuery();
+          }
+      }
+  go:
+    rule: |
+      mode: taint
+      pattern-sources:
+        - pattern: '($R : *http.Request).URL.Query().Get(...)'
+        - pattern: '($R : *http.Request).FormValue(...)'
+        - pattern: '($R : *http.Request).PostFormValue(...)'
+      pattern-sanitizers:
+        - pattern: strconv.Atoi(...)
+      pattern-sinks:
+        - patterns:
+            - pattern-either:
+                - pattern: $DB.Query($Q, ...)
+                - pattern: $DB.QueryRow($Q, ...)
+                - pattern: $DB.Exec($Q, ...)
+                - pattern: $DB.QueryContext($CTX, $Q, ...)
+                - pattern: $DB.ExecContext($CTX, $Q, ...)
+            - focus-metavariable: $Q
+    test: |
+      package main
+
+      import (
+      	"database/sql"
+      	"fmt"
+      	"net/http"
+      )
+
+      func handler(db *sql.DB, r *http.Request) {
+      	name := r.URL.Query().Get("name")
+      	// ruleid: __RULE_ID__
+      	db.Query(fmt.Sprintf("SELECT * FROM users WHERE name = '%s'", name))
+      	// ruleid: __RULE_ID__
+      	db.Exec("DELETE FROM users WHERE name = '" + name + "'")
+      	// ok: __RULE_ID__
+      	db.Query("SELECT * FROM users WHERE name = $1", name)
+      }

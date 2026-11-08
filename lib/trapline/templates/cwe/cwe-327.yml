@@ -1,0 +1,124 @@
+cwe: CWE-327
+name: "Use of a Broken or Risky Cryptographic Algorithm"
+title: Weak cryptography
+owasp: ["A02:2021 - Cryptographic Failures"]
+keywords: ["weak cryptograph", "broken cryptograph", "md5", "sha1", "sha-1", "des", "rc4", "ecb mode", "weak hash", "weak cipher"]
+message: >-
+  A broken or weak cryptographic algorithm is used. Use SHA-256 or better for
+  hashing (bcrypt/argon2 for passwords) and AES-GCM for encryption.
+languages:
+  ruby:
+    rule: |
+      pattern-either:
+        - pattern: Digest::MD5.$FN(...)
+        - pattern: Digest::SHA1.$FN(...)
+        - pattern: OpenSSL::Digest::MD5.new(...)
+        - pattern: OpenSSL::Digest::SHA1.new(...)
+        - patterns:
+            - pattern-either:
+                - pattern: OpenSSL::Digest.new($ALG, ...)
+                - pattern: OpenSSL::Cipher.new($ALG, ...)
+            - metavariable-regex:
+                metavariable: $ALG
+                regex: (?i).*(md5|sha1|\bdes\b|des-|rc4|-ecb)
+    test: |
+      # ruleid: __RULE_ID__
+      token = Digest::MD5.hexdigest(secret)
+      # ruleid: __RULE_ID__
+      cipher = OpenSSL::Cipher.new("des-ede3-cbc")
+      # ok: __RULE_ID__
+      token = Digest::SHA256.hexdigest(secret)
+      # ok: __RULE_ID__
+      cipher = OpenSSL::Cipher.new("aes-256-gcm")
+  python:
+    rule: |
+      pattern-either:
+        - pattern: hashlib.md5(...)
+        - pattern: hashlib.sha1(...)
+        - pattern: Crypto.Cipher.DES.new(...)
+        - pattern: Crypto.Cipher.ARC4.new(...)
+        - pattern: Cryptodome.Cipher.DES.new(...)
+        - patterns:
+            - pattern: hashlib.new($ALG, ...)
+            - metavariable-regex:
+                metavariable: $ALG
+                regex: (?i).*(md5|sha1|md4)
+    test: |
+      import hashlib
+
+      # ruleid: __RULE_ID__
+      digest = hashlib.md5(data).hexdigest()
+      # ruleid: __RULE_ID__
+      digest = hashlib.new("sha1", data).hexdigest()
+      # ok: __RULE_ID__
+      digest = hashlib.sha256(data).hexdigest()
+  javascript:
+    rule: |
+      patterns:
+        - pattern-either:
+            - pattern: crypto.createHash($ALG)
+            - pattern: crypto.createCipheriv($ALG, ...)
+            - pattern: crypto.createCipher($ALG, ...)
+            - pattern: require("crypto").createHash($ALG)
+        - metavariable-regex:
+            metavariable: $ALG
+            regex: (?i).*(md5|md4|sha1|\bdes\b|des-|rc4|-ecb)
+    test: |
+      const crypto = require("crypto");
+
+      // ruleid: __RULE_ID__
+      const h = crypto.createHash("md5").update(data).digest("hex");
+      // ok: __RULE_ID__
+      const s = crypto.createHash("sha256").update(data).digest("hex");
+  java:
+    rule: |
+      patterns:
+        - pattern-either:
+            - pattern: MessageDigest.getInstance($ALG, ...)
+            - pattern: Cipher.getInstance($ALG, ...)
+        - metavariable-regex:
+            metavariable: $ALG
+            regex: (?i).*("md5"|"md4"|"sha-?1"|"des|"rc4|/ecb/|"aes")
+    test: |
+      import java.security.MessageDigest;
+      import javax.crypto.Cipher;
+
+      public class Hashing {
+          public void run() throws Exception {
+              // ruleid: __RULE_ID__
+              MessageDigest md = MessageDigest.getInstance("MD5");
+              // ruleid: __RULE_ID__
+              Cipher c = Cipher.getInstance("DES/CBC/PKCS5Padding");
+              // ruleid: __RULE_ID__
+              Cipher e = Cipher.getInstance("AES/ECB/PKCS5Padding");
+              // ok: __RULE_ID__
+              MessageDigest ok = MessageDigest.getInstance("SHA-256");
+              // ok: __RULE_ID__
+              Cipher g = Cipher.getInstance("AES/GCM/NoPadding");
+          }
+      }
+  go:
+    rule: |
+      pattern-either:
+        - pattern: md5.New()
+        - pattern: md5.Sum(...)
+        - pattern: sha1.New()
+        - pattern: sha1.Sum(...)
+        - pattern: des.NewCipher(...)
+        - pattern: des.NewTripleDESCipher(...)
+        - pattern: rc4.NewCipher(...)
+    test: |
+      package main
+
+      import (
+      	"crypto/md5"
+      	"crypto/sha256"
+      )
+
+      func digest(data []byte) {
+      	// ruleid: __RULE_ID__
+      	a := md5.Sum(data)
+      	// ok: __RULE_ID__
+      	b := sha256.Sum256(data)
+      	_, _ = a, b
+      }

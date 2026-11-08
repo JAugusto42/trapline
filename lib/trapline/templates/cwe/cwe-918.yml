@@ -1,0 +1,166 @@
+cwe: CWE-918
+name: "Server-Side Request Forgery (SSRF)"
+title: Server-side request forgery (SSRF)
+owasp: ["A10:2021 - Server-Side Request Forgery (SSRF)"]
+keywords: ["server-side request forgery", "ssrf", "internal network", "arbitrary url", "arbitrary requests"]
+message: >-
+  An outbound HTTP request is made to a URL controlled by the user (SSRF).
+  Validate the destination against an allowlist of hosts and block internal
+  addresses.
+languages:
+  ruby:
+    rule: |
+      mode: taint
+      pattern-sources:
+        - pattern: params
+        - pattern: cookies
+      pattern-sinks:
+        - patterns:
+            - pattern-either:
+                - pattern: Net::HTTP.get($U, ...)
+                - pattern: Net::HTTP.get_response($U, ...)
+                - pattern: Net::HTTP.start($U, ...)
+                - pattern: Net::HTTP.new($U, ...)
+                - pattern: URI.open($U, ...)
+                - pattern: open($U, ...)
+                - pattern: HTTParty.$VERB($U, ...)
+                - pattern: Faraday.$VERB($U, ...)
+                - pattern: Faraday.new($U, ...)
+                - pattern: RestClient.$VERB($U, ...)
+                - pattern: HTTP.$VERB($U, ...)
+            - focus-metavariable: $U
+    test: |
+      require "net/http"
+
+      class PreviewController < ApplicationController
+        def show
+          # ruleid: __RULE_ID__
+          body = Net::HTTP.get(URI(params[:url]))
+          # ruleid: __RULE_ID__
+          resp = HTTParty.get(params[:url])
+          # ok: __RULE_ID__
+          resp = HTTParty.get("https://api.example.com/items", query: { q: params[:q] })
+        end
+      end
+  python:
+    rule: |
+      mode: taint
+      pattern-sources:
+        - pattern: flask.request.$ANY
+        - patterns:
+            - pattern-inside: |
+                def $VIEW(request, ...):
+                  ...
+            - pattern: request.$ANY
+      pattern-sinks:
+        - patterns:
+            - pattern-either:
+                - pattern: requests.$VERB($U, ...)
+                - pattern: requests.request($M, $U, ...)
+                - pattern: httpx.$VERB($U, ...)
+                - pattern: urllib.request.urlopen($U, ...)
+                - pattern: urllib.request.Request($U, ...)
+            - focus-metavariable: $U
+    test: |
+      import requests
+      from flask import request
+
+      def preview():
+          url = request.args.get("url")
+          # ruleid: __RULE_ID__
+          r = requests.get(url, timeout=5)
+          # ok: __RULE_ID__
+          r = requests.get("https://api.example.com/items", params={"q": url}, timeout=5)
+  javascript:
+    rule: |
+      mode: taint
+      pattern-sources:
+        - pattern: $REQ.query
+        - pattern: $REQ.body
+        - pattern: $REQ.params
+      pattern-sinks:
+        - patterns:
+            - pattern-either:
+                - pattern: axios($U, ...)
+                - pattern: axios.$VERB($U, ...)
+                - pattern: fetch($U, ...)
+                - pattern: got($U, ...)
+                - pattern: got.$VERB($U, ...)
+                - pattern: http.get($U, ...)
+                - pattern: https.get($U, ...)
+                - pattern: http.request($U, ...)
+                - pattern: https.request($U, ...)
+            - focus-metavariable: $U
+    test: |
+      const axios = require("axios");
+
+      app.get("/preview", async (req, res) => {
+        // ruleid: __RULE_ID__
+        const r = await axios.get(req.query.url);
+        // ok: __RULE_ID__
+        const s = await axios.get("https://api.example.com/items", { params: { q: req.query.q } });
+        res.send(r.data + s.data);
+      });
+  java:
+    rule: |
+      mode: taint
+      pattern-sources:
+        - pattern: (javax.servlet.http.HttpServletRequest $REQ).$GET(...)
+        - pattern: (jakarta.servlet.http.HttpServletRequest $REQ).$GET(...)
+        - patterns:
+            - pattern-inside: |
+                $RET $METHOD(..., @RequestParam $T $P, ...) { ... }
+            - pattern: $P
+      pattern-sinks:
+        - pattern: new URL(...)
+        - pattern: URI.create(...)
+        - pattern: new URI(...)
+        - patterns:
+            - pattern-either:
+                - pattern: (RestTemplate $R).$METHOD($U, ...)
+                - pattern: (WebClient $W).get().uri($U, ...)
+            - focus-metavariable: $U
+    test: |
+      import javax.servlet.http.HttpServletRequest;
+      import java.net.URL;
+      import java.io.InputStream;
+
+      public class PreviewServlet {
+          public void doGet(HttpServletRequest request) throws Exception {
+              String target = request.getParameter("url");
+              // ruleid: __RULE_ID__
+              InputStream in = new URL(target).openStream();
+              // ok: __RULE_ID__
+              InputStream fixed = new URL("https://api.example.com/items").openStream();
+          }
+      }
+  go:
+    rule: |
+      mode: taint
+      pattern-sources:
+        - pattern: '($R : *http.Request).URL.Query().Get(...)'
+        - pattern: '($R : *http.Request).FormValue(...)'
+      pattern-sinks:
+        - patterns:
+            - pattern-either:
+                - pattern: http.Get($U)
+                - pattern: http.Head($U)
+                - pattern: http.Post($U, ...)
+                - pattern: http.PostForm($U, ...)
+                - pattern: http.NewRequest($M, $U, ...)
+                - pattern: http.NewRequestWithContext($CTX, $M, $U, ...)
+            - focus-metavariable: $U
+    test: |
+      package main
+
+      import "net/http"
+
+      func preview(w http.ResponseWriter, r *http.Request) {
+      	target := r.URL.Query().Get("url")
+      	// ruleid: __RULE_ID__
+      	resp, _ := http.Get(target)
+      	// ok: __RULE_ID__
+      	fixed, _ := http.Get("https://api.example.com/items?q=" + "static")
+      	_ = resp
+      	_ = fixed
+      }

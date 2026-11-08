@@ -1,0 +1,167 @@
+cwe: CWE-22
+name: "Improper Limitation of a Pathname to a Restricted Directory ('Path Traversal')"
+title: Path traversal
+owasp: ["A01:2021 - Broken Access Control"]
+keywords: ["path traversal", "directory traversal", "../", "arbitrary file read", "arbitrary files"]
+message: >-
+  Untrusted input is used to build a file path, which can allow reading or
+  writing files outside the intended directory. Normalize the path and check
+  that it stays inside an allowed base directory.
+languages:
+  ruby:
+    rule: |
+      mode: taint
+      pattern-sources:
+        - pattern: params
+        - pattern: cookies
+      pattern-sanitizers:
+        - pattern: File.basename(...)
+      pattern-sinks:
+        - patterns:
+            - pattern-either:
+                - pattern: File.read($P, ...)
+                - pattern: File.open($P, ...)
+                - pattern: File.readlines($P, ...)
+                - pattern: File.write($P, ...)
+                - pattern: IO.read($P, ...)
+                - pattern: send_file($P, ...)
+                - pattern: Rails.root.join(..., $P, ...)
+            - focus-metavariable: $P
+    test: |
+      class FilesController < ApplicationController
+        def show
+          # ruleid: __RULE_ID__
+          send_file Rails.root.join("uploads", params[:name])
+          # ruleid: __RULE_ID__
+          data = File.read("/var/data/#{params[:name]}")
+          # ok: __RULE_ID__
+          data = File.read("/var/data/#{File.basename(params[:name])}")
+        end
+      end
+  python:
+    rule: |
+      mode: taint
+      pattern-sources:
+        - pattern: flask.request.$ANY
+        - patterns:
+            - pattern-inside: |
+                def $VIEW(request, ...):
+                  ...
+            - pattern: request.$ANY
+      pattern-sanitizers:
+        - pattern: os.path.basename(...)
+        - pattern: werkzeug.utils.secure_filename(...)
+      pattern-sinks:
+        - pattern: open(...)
+        - pattern: flask.send_file(...)
+        - pattern: os.remove(...)
+        - pattern: shutil.rmtree(...)
+    test: |
+      import os
+      from flask import request, send_file
+      from werkzeug.utils import secure_filename
+
+      def download():
+          name = request.args.get("file")
+          # ruleid: __RULE_ID__
+          return send_file(os.path.join("/srv/files", name))
+
+      def download_safe():
+          name = secure_filename(request.args.get("file"))
+          # ok: __RULE_ID__
+          return send_file(os.path.join("/srv/files", name))
+  javascript:
+    rule: |
+      mode: taint
+      pattern-sources:
+        - pattern: $REQ.query
+        - pattern: $REQ.body
+        - pattern: $REQ.params
+      pattern-sanitizers:
+        - pattern: path.basename(...)
+      pattern-sinks:
+        - patterns:
+            - pattern-either:
+                - pattern: fs.$FN($P, ...)
+                - pattern: $RES.sendFile($P, ...)
+                - pattern: $RES.download($P, ...)
+            - focus-metavariable: $P
+    test: |
+      const fs = require("fs");
+      const path = require("path");
+
+      app.get("/file", (req, res) => {
+        // ruleid: __RULE_ID__
+        fs.readFile("/srv/files/" + req.query.name, (e, d) => res.send(d));
+        // ok: __RULE_ID__
+        fs.readFile(path.join("/srv/files", path.basename(req.query.name)), (e, d) => res.send(d));
+      });
+  java:
+    rule: |
+      mode: taint
+      pattern-sources:
+        - pattern: (javax.servlet.http.HttpServletRequest $REQ).$GET(...)
+        - pattern: (jakarta.servlet.http.HttpServletRequest $REQ).$GET(...)
+        - patterns:
+            - pattern-inside: |
+                $RET $METHOD(..., @RequestParam $T $P, ...) { ... }
+            - pattern: $P
+      pattern-sanitizers:
+        - pattern: FilenameUtils.getName(...)
+        - pattern: (java.nio.file.Path $P).getFileName()
+      pattern-sinks:
+        - pattern: new File(...)
+        - pattern: new FileInputStream(...)
+        - pattern: new FileOutputStream(...)
+        - pattern: new FileReader(...)
+        - pattern: Paths.get(...)
+        - pattern: Path.of(...)
+    test: |
+      import javax.servlet.http.HttpServletRequest;
+      import java.io.File;
+      import java.io.FileInputStream;
+      import org.apache.commons.io.FilenameUtils;
+
+      public class DownloadServlet {
+          public void doGet(HttpServletRequest request) throws Exception {
+              String name = request.getParameter("file");
+              // ruleid: __RULE_ID__
+              FileInputStream in = new FileInputStream("/srv/files/" + name);
+              // ok: __RULE_ID__
+              File safe = new File("/srv/files/" + FilenameUtils.getName(name));
+          }
+      }
+  go:
+    rule: |
+      mode: taint
+      pattern-sources:
+        - pattern: '($R : *http.Request).URL.Query().Get(...)'
+        - pattern: '($R : *http.Request).FormValue(...)'
+      pattern-sanitizers:
+        - pattern: filepath.Base(...)
+      pattern-sinks:
+        - pattern: os.Open(...)
+        - pattern: os.OpenFile(...)
+        - pattern: os.ReadFile(...)
+        - pattern: ioutil.ReadFile(...)
+        - pattern: os.Remove(...)
+        - patterns:
+            - pattern: http.ServeFile($W, $REQ, $P)
+            - focus-metavariable: $P
+    test: |
+      package main
+
+      import (
+      	"net/http"
+      	"os"
+      	"path/filepath"
+      )
+
+      func download(w http.ResponseWriter, r *http.Request) {
+      	name := r.URL.Query().Get("file")
+      	// ruleid: __RULE_ID__
+      	data, _ := os.ReadFile("/srv/files/" + name)
+      	// ok: __RULE_ID__
+      	safe, _ := os.ReadFile(filepath.Join("/srv/files", filepath.Base(name)))
+      	w.Write(append(data, safe...))
+      }

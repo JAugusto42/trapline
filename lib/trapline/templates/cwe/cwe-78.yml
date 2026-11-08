@@ -1,0 +1,166 @@
+cwe: CWE-78
+name: "Improper Neutralization of Special Elements used in an OS Command ('OS Command Injection')"
+title: OS command injection
+owasp: ["A03:2021 - Injection"]
+keywords: ["command injection", "os command", "shell command", "shell metacharacters", "arbitrary command"]
+message: >-
+  Untrusted input reaches a shell command. Pass arguments as a list (no shell)
+  and validate them against an allowlist.
+languages:
+  ruby:
+    rule: |
+      mode: taint
+      pattern-sources:
+        - pattern: params
+        - pattern: cookies
+      pattern-sanitizers:
+        - pattern: Shellwords.escape(...)
+        - pattern: $X.shellescape
+      pattern-sinks:
+        - patterns:
+            - pattern-either:
+                - pattern: system($CMD)
+                - pattern: exec($CMD)
+                - pattern: spawn($CMD)
+                - pattern: Kernel.system($CMD)
+                - pattern: IO.popen($CMD, ...)
+                - pattern: Open3.$FN($CMD)
+                - pattern: "`...`"
+            - focus-metavariable: $CMD
+        - pattern: "`...`"
+    test: |
+      class ToolsController < ApplicationController
+        def ping
+          # ruleid: __RULE_ID__
+          system("ping -c 1 #{params[:host]}")
+          # ruleid: __RULE_ID__
+          out = `nslookup #{params[:host]}`
+          # ok: __RULE_ID__
+          system("ping", "-c", "1", params[:host])
+          # ok: __RULE_ID__
+          system("ping -c 1 #{Shellwords.escape(params[:host])}")
+        end
+      end
+  python:
+    rule: |
+      mode: taint
+      pattern-sources:
+        - pattern: flask.request.$ANY
+        - patterns:
+            - pattern-inside: |
+                def $VIEW(request, ...):
+                  ...
+            - pattern: request.$ANY
+      pattern-sanitizers:
+        - pattern: shlex.quote(...)
+      pattern-sinks:
+        - pattern: os.system(...)
+        - pattern: os.popen(...)
+        - patterns:
+            - pattern-either:
+                - pattern: subprocess.$FN($CMD, ..., shell=True, ...)
+            - focus-metavariable: $CMD
+    test: |
+      import os
+      import shlex
+      import subprocess
+      from flask import request
+
+      def ping():
+          host = request.args.get("host")
+          # ruleid: __RULE_ID__
+          os.system("ping -c 1 " + host)
+          # ruleid: __RULE_ID__
+          subprocess.run("ping -c 1 " + host, shell=True)
+          # ok: __RULE_ID__
+          subprocess.run(["ping", "-c", "1", host])
+          # ok: __RULE_ID__
+          os.system("ping -c 1 " + shlex.quote(host))
+  javascript:
+    rule: |
+      mode: taint
+      pattern-sources:
+        - pattern: $REQ.query
+        - pattern: $REQ.body
+        - pattern: $REQ.params
+      pattern-sinks:
+        - patterns:
+            - pattern-either:
+                - pattern: $CP.exec($CMD, ...)
+                - pattern: $CP.execSync($CMD, ...)
+                - pattern: exec($CMD, ...)
+                - pattern: execSync($CMD, ...)
+                - pattern: '$CP.spawn($CMD, ..., {..., shell: true, ...})'
+            - focus-metavariable: $CMD
+    test: |
+      const { exec, execFile } = require("child_process");
+
+      app.get("/ping", (req, res) => {
+        // ruleid: __RULE_ID__
+        exec("ping -c 1 " + req.query.host, (err, out) => res.send(out));
+        // ok: __RULE_ID__
+        execFile("ping", ["-c", "1", req.query.host], (err, out) => res.send(out));
+      });
+  java:
+    rule: |
+      mode: taint
+      pattern-sources:
+        - pattern: (javax.servlet.http.HttpServletRequest $REQ).$GET(...)
+        - pattern: (jakarta.servlet.http.HttpServletRequest $REQ).$GET(...)
+        - patterns:
+            - pattern-inside: |
+                $RET $METHOD(..., @RequestParam $T $P, ...) { ... }
+            - pattern: $P
+      pattern-sinks:
+        - patterns:
+            - pattern-either:
+                - pattern: (Runtime $RT).exec($CMD, ...)
+                - pattern: Runtime.getRuntime().exec($CMD, ...)
+                - pattern: new ProcessBuilder("sh", "-c", $CMD)
+                - pattern: new ProcessBuilder("bash", "-c", $CMD)
+                - pattern: new ProcessBuilder("cmd.exe", "/c", $CMD)
+            - focus-metavariable: $CMD
+    test: |
+      import javax.servlet.http.HttpServletRequest;
+
+      public class PingServlet {
+          public void ping(HttpServletRequest request) throws Exception {
+              String host = request.getParameter("host");
+              // ruleid: __RULE_ID__
+              Runtime.getRuntime().exec("ping -c 1 " + host);
+              // ruleid: __RULE_ID__
+              new ProcessBuilder("sh", "-c", "ping -c 1 " + host).start();
+              // ok: __RULE_ID__
+              new ProcessBuilder("ping", "-c", "1", host).start();
+          }
+      }
+  go:
+    rule: |
+      mode: taint
+      pattern-sources:
+        - pattern: '($R : *http.Request).URL.Query().Get(...)'
+        - pattern: '($R : *http.Request).FormValue(...)'
+        - pattern: '($R : *http.Request).PostFormValue(...)'
+      pattern-sinks:
+        - patterns:
+            - pattern-either:
+                - pattern: exec.Command("sh", "-c", $CMD)
+                - pattern: exec.Command("bash", "-c", $CMD)
+                - pattern: exec.CommandContext($CTX, "sh", "-c", $CMD)
+                - pattern: exec.CommandContext($CTX, "bash", "-c", $CMD)
+            - focus-metavariable: $CMD
+    test: |
+      package main
+
+      import (
+      	"net/http"
+      	"os/exec"
+      )
+
+      func ping(w http.ResponseWriter, r *http.Request) {
+      	host := r.URL.Query().Get("host")
+      	// ruleid: __RULE_ID__
+      	exec.Command("sh", "-c", "ping -c 1 "+host).Run()
+      	// ok: __RULE_ID__
+      	exec.Command("ping", "-c", "1", host).Run()
+      }

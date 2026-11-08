@@ -1,0 +1,46 @@
+cwe: CWE-917
+name: "Improper Neutralization of Special Elements used in an Expression Language Statement ('Expression Language Injection')"
+title: Expression language / JNDI lookup injection
+owasp: ["A03:2021 - Injection"]
+keywords: ["expression language", "jndi", "lookup", "log4j", "log4shell", "message lookup", "el injection", "logging untrusted", "log messages"]
+message: >-
+  Untrusted input is logged with Log4j 2. On vulnerable versions (< 2.17.1)
+  message lookups such as ${jndi:...} can lead to remote code execution.
+  Upgrade Log4j and avoid logging raw request data.
+languages:
+  java:
+    rule: |
+      mode: taint
+      pattern-sources:
+        - pattern: (javax.servlet.http.HttpServletRequest $REQ).$GET(...)
+        - pattern: (jakarta.servlet.http.HttpServletRequest $REQ).$GET(...)
+        - patterns:
+            - pattern-inside: |
+                $RET $METHOD(..., @RequestHeader $T $P, ...) { ... }
+            - pattern: $P
+        - patterns:
+            - pattern-inside: |
+                $RET $METHOD(..., @RequestParam $T $P, ...) { ... }
+            - pattern: $P
+      pattern-sinks:
+        - patterns:
+            - pattern: (org.apache.logging.log4j.Logger $LOG).$LEVEL(...)
+            - metavariable-regex:
+                metavariable: $LEVEL
+                regex: ^(trace|debug|info|warn|error|fatal|log|printf)$
+    test: |
+      import javax.servlet.http.HttpServletRequest;
+      import org.apache.logging.log4j.LogManager;
+      import org.apache.logging.log4j.Logger;
+
+      public class LoginServlet {
+          private static final Logger logger = LogManager.getLogger(LoginServlet.class);
+
+          public void doPost(HttpServletRequest request) {
+              String agent = request.getHeader("User-Agent");
+              // ruleid: __RULE_ID__
+              logger.info("Login attempt from " + agent);
+              // ok: __RULE_ID__
+              logger.info("Login attempt");
+          }
+      }

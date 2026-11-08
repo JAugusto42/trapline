@@ -1,0 +1,165 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <base href="__BASE__">
+  <title>Trapline</title>
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 24 24%22%3E%3Crect x=%2211%22 y=%2213%22 width=%229%22 height=%224%22 rx=%221%22 fill=%22%23f2b33d%22/%3E%3Cpath d=%22M4 5h9M4 10h16M4 15h6M4 20h12%22 stroke=%22%231c2733%22 stroke-width=%222%22 stroke-linecap=%22round%22/%3E%3C/svg%3E">
+  <link rel="stylesheet" href="assets/codemirror.css">
+  <link rel="stylesheet" href="assets/app.css">
+</head>
+<body>
+  <header class="top">
+    <div class="brand">
+      <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 5h9M4 10h16M4 15h6M4 20h12" /><rect x="11" y="13" width="9" height="4" rx="1" /></svg>
+      <span>Trapline</span>
+    </div>
+    <div class="doc">
+      <span id="doc-name" class="doc-name">Untitled rule</span>
+      <span id="doc-state" class="doc-state" aria-live="polite"></span>
+    </div>
+    <div class="top-actions">
+      <span id="engine" class="engine" title="Engine used to run the rules"></span>
+      <button id="btn-download" class="ghost" type="button" title="Download the YAML">Download</button>
+      <button id="btn-delete" class="ghost danger" type="button" hidden>Delete</button>
+      <button id="btn-save" class="primary" type="button" title="Ctrl+S">Save</button>
+    </div>
+  </header>
+
+  <div class="layout">
+    <aside class="side" aria-label="Rules">
+      <div class="side-actions">
+        <button id="btn-new" type="button">New rule</button>
+        <button id="btn-cve" type="button" class="accent">Generate from CVE</button>
+      </div>
+      <label class="search">
+        <span class="sr-only">Filter rules</span>
+        <input id="filter" type="search" placeholder="Filter by id, CVE or CWE">
+      </label>
+      <ul id="rule-list" class="rule-list"></ul>
+      <p id="rules-path" class="rules-path"></p>
+    </aside>
+
+    <main class="work">
+      <section class="pane pane-rule" aria-label="Rule">
+        <details id="details" class="details">
+          <summary>
+            <span>Rule details</span>
+            <span id="details-summary" class="details-summary"></span>
+          </summary>
+          <form id="fields" class="fields" autocomplete="off">
+            <label class="f-id">Id <input name="id" required spellcheck="false"></label>
+            <label class="f-sev">Severity <select name="severity"></select></label>
+            <label class="f-lang">Languages <input name="languages" placeholder="ruby, python" spellcheck="false"></label>
+            <label class="f-msg">Message <textarea name="message" rows="2"></textarea></label>
+            <label class="f-cwe">CWE <input name="cwe" placeholder="CWE-89: SQL Injection"></label>
+            <label class="f-cve">CVE <input name="cve" placeholder="CVE-2024-1234" spellcheck="false"></label>
+            <label class="f-conf">Confidence
+              <select name="confidence"><option value="">—</option><option>LOW</option><option>MEDIUM</option><option>HIGH</option></select>
+            </label>
+            <label class="f-refs">References <textarea name="references" rows="2" placeholder="One URL per line" spellcheck="false"></textarea></label>
+          </form>
+        </details>
+        <div class="pane-head">
+          <h2>Rule <span class="hint">YAML</span></h2>
+          <span id="mode" class="mode"></span>
+        </div>
+        <div id="yaml-editor" class="editor"></div>
+        <div id="issues" class="issues" aria-live="polite"></div>
+      </section>
+
+      <section class="pane pane-test" aria-label="Test">
+        <div class="pane-head">
+          <h2>Test code <span class="hint" title="Click the margin next to a line: must match → must not match → no expectation">click the margin to mark</span></h2>
+          <div class="test-controls">
+            <label class="sr-only" for="test-lang">Test language</label>
+            <select id="test-lang"></select>
+            <label class="auto" title="Show the ruleid/ok comments instead of badges"><input id="raw-ann" type="checkbox"> Show comments</label>
+            <label class="auto"><input id="auto-run" type="checkbox" checked> Run on edit</label>
+            <button id="btn-run" class="primary" type="button" title="Ctrl+Enter">Run</button>
+          </div>
+        </div>
+        <div id="run-status" class="run-status" aria-live="polite"></div>
+        <div id="test-editor" class="editor"></div>
+        <div id="results" class="results" aria-live="polite">
+          <p class="empty">Write a vulnerable example and a fixed one, annotated with <code>ruleid:</code> and <code>ok:</code>, and run the rule.</p>
+        </div>
+      </section>
+    </main>
+  </div>
+
+  <dialog id="dlg-new" class="dlg">
+    <form method="dialog" id="form-new">
+      <h3>New rule</h3>
+      <fieldset class="kinds" id="kinds"></fieldset>
+      <div class="row">
+        <label>Id <input name="id" value="my-rule" spellcheck="false" required></label>
+        <label>Language <select name="language" id="new-lang"></select></label>
+      </div>
+      <div class="dlg-actions">
+        <button value="cancel" type="submit" class="ghost" formnovalidate>Cancel</button>
+        <button value="ok" type="submit" class="primary">Create</button>
+      </div>
+    </form>
+  </dialog>
+
+  <dialog id="dlg-cve" class="dlg dlg-wide">
+    <form id="form-cve">
+      <h3>Generate a rule from a CVE</h3>
+      <p class="dlg-lead">Looks up the vulnerability in NVD and OSV and builds drafts from the CWE and the affected packages.</p>
+      <div class="row">
+        <label class="grow">CVE or GHSA <input name="id" placeholder="CVE-2021-44228" spellcheck="false" required></label>
+        <label>Language <select name="language" id="cve-lang"><option value="">Detect</option></select></label>
+        <button type="submit" class="primary" id="btn-cve-fetch">Search</button>
+      </div>
+      <details class="manual" id="cve-manual">
+        <summary>No network access? Enter the data manually</summary>
+        <div class="manual-grid">
+          <label>CWE <input name="m_cwe" placeholder="CWE-89"></label>
+          <label>Ecosystem
+            <select name="m_ecosystem"><option value="">—</option><option>RubyGems</option><option>PyPI</option><option>npm</option><option>Maven</option><option>Go</option></select>
+          </label>
+          <label>Package <input name="m_package" placeholder="package name" spellcheck="false"></label>
+          <label>Fixed in <input name="m_fixed" placeholder="1.2.3" spellcheck="false"></label>
+          <label class="span">Description <textarea name="m_description" rows="3"></textarea></label>
+          <button type="button" id="btn-cve-manual">Generate with this data</button>
+        </div>
+      </details>
+    </form>
+    <div id="cve-result" class="cve-result"></div>
+    <div class="dlg-actions">
+      <button type="button" class="ghost" id="btn-cve-close">Close</button>
+      <button type="button" class="primary" id="btn-cve-open" disabled>Open in editor</button>
+    </div>
+  </dialog>
+
+  <dialog id="dlg-save" class="dlg">
+    <form method="dialog" id="form-save">
+      <h3>Save rule</h3>
+      <label>File name <input name="slug" required spellcheck="false" pattern="[A-Za-z0-9][A-Za-z0-9._\-\/]*"></label>
+      <p class="dlg-lead" id="save-path"></p>
+      <div class="dlg-actions">
+        <button value="cancel" type="submit" class="ghost" formnovalidate>Cancel</button>
+        <button value="ok" type="submit" class="primary">Save</button>
+      </div>
+    </form>
+  </dialog>
+
+  <dialog id="dlg-confirm" class="dlg">
+    <form method="dialog">
+      <h3 id="confirm-title"></h3>
+      <p class="dlg-lead" id="confirm-text"></p>
+      <div class="dlg-actions">
+        <button value="cancel" class="ghost">Cancel</button>
+        <button value="ok" class="primary" id="confirm-ok"></button>
+      </div>
+    </form>
+  </dialog>
+
+  <div id="toast" class="toast" role="status" hidden></div>
+
+  <script src="assets/codemirror.js"></script>
+  <script src="assets/app.js"></script>
+</body>
+</html>

@@ -1,0 +1,21 @@
+# Runs the editor on any Rack server (puma, unicorn, passenger...).
+#
+#   cp config.ru.example config.ru
+#   TRAPLINE_USER=admin TRAPLINE_PASSWORD=change-me bundle exec puma
+#
+# Your Gemfile needs `gem "trapline"` and a server such as `gem "puma"`.
+# Inside the trapline repository, enable the optional group first:
+#   bundle config set --local with server && bundle install
+require "trapline"
+
+credentials = %w[TRAPLINE_USER TRAPLINE_PASSWORD].map do |name|
+  ENV.fetch(name) { abort "config.ru: set TRAPLINE_USER and TRAPLINE_PASSWORD (HTTP Basic credentials)" }
+end
+
+Trapline.configure do |c|
+  c.rules_path = ENV.fetch("TRAPLINE_RULES_PATH", File.expand_path("rules", __dir__))
+  c.authorize = credentials
+  # c.read_only = true   # validate and run only, no writes
+end
+
+run Trapline::Web::App.new
