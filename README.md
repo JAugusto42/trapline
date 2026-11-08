@@ -86,7 +86,7 @@ pip install semgrep      # or: brew install semgrep
 
 ```bash
 trapline version
-# trapline 0.1.0
+# trapline 0.1.1
 # engine: opengrep 1.33.1 (/Users/you/.opengrep/cli/latest/opengrep)
 ```
 

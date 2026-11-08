@@ -7,12 +7,27 @@ Gem::Specification.new do |spec|
   spec.version = Trapline::VERSION
   spec.authors = ["Jose Augusto"]
   spec.email = ["joseaugusto.881@outlook.com"]
-  spec.summary = "Editor and generator for semgrep/opengrep rules, standalone or mounted in Rails"
+  spec.summary = "Write, test and generate opengrep/semgrep rules: web editor, CLI and CVE-to-rule drafts"
   spec.description = <<~DESC
-    Trapline is a web editor for creating, testing and maintaining semgrep/opengrep
-    rules, with structural validation, execution with ruleid/ok annotations and a
-    draft generator from CVEs (NVD + OSV) with per-CWE templates. It works as a
-    CLI (`trapline server`), as a Rack app and mounted in a Rails app.
+    Trapline sets traps for vulnerable code: it takes you from a CVE to a tested
+    opengrep/semgrep rule.
+
+    The web editor validates the rule YAML as you type, runs it against test code
+    and highlights each finding. You mark which lines must or must not match by
+    clicking the margin or accepting results, and Trapline writes the ruleid/ok
+    annotations for you, so the test file stays in the standard --test format
+    that opengrep and semgrep read.
+
+    Give it a CVE or GHSA id and it looks the advisory up in NVD and OSV, then
+    drafts rules with test code: a template for the vulnerability class (CWE), a
+    check for vulnerable runtime images (PHP, Python, Node.js, Ruby, Go, .NET) in
+    Dockerfiles, Compose, Kubernetes, Helm and CI files, a rule that finds usage
+    of the affected package, and a taint skeleton for 14 languages. Notes explain
+    what was inferred and what still needs review.
+
+    The CLI validates rules, runs their tests in CI and generates drafts. It runs
+    standalone (trapline server), as a Rack app or mounted in Rails, with no
+    runtime dependencies besides Ruby and the opengrep or semgrep binary.
   DESC
   spec.homepage = "https://github.com/JAugusto42/trapline"
   spec.license = "MIT"
