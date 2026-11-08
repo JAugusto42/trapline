@@ -578,7 +578,7 @@ git tag v0.1.0
 git push origin v0.1.0
 ```
 
-Publishing uses [RubyGems trusted publishing](https://guides.rubygems.org/trusted-publishing/), so no API key is stored in the repository. It must be set up once on rubygems.org: as a pending trusted publisher for the first release, with repository `JAugusto42/trapline`, workflow `release.yml` and environment `release`.
+Publishing uses [RubyGems trusted publishing](https://guides.rubygems.org/trusted-publishing/), so no API key is stored in the repository. It must be set up once on rubygems.org: as a pending trusted publisher for the first release, with repository `JAugusto42/trapline`, workflow `release.yml` and environment `release`. A pending publisher expires after about 12 hours, so create it right before pushing the first tag. The workflow names the owning account (`RUBYGEMS_OWNER_ID`) when it exchanges the GitHub token, as RubyGems requires for a new gem's first push.
 
 ## License
 

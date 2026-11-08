@@ -44,8 +44,25 @@ jobs:
       - name: Build gem
         run: gem build trapline.gemspec
 
-      - name: Configure RubyGems credentials
-        uses: rubygems/configure-rubygems-credentials@v1.0.0
+      # Same exchange as rubygems/configure-rubygems-credentials, plus `owner`:
+      # RubyGems requires a gem's first push from a pending trusted publisher to
+      # name the owning account, and no release of the action can pass it yet.
+      - name: Get a RubyGems API key (trusted publishing)
+        env:
+          RUBYGEMS_OWNER_ID: "188220"
+        run: |
+          jwt=$(curl -fsS -H "Authorization: bearer $ACTIONS_ID_TOKEN_REQUEST_TOKEN" \
+            "$ACTIONS_ID_TOKEN_REQUEST_URL&audience=rubygems.org" | jq -r .value)
+          echo "::add-mask::$jwt"
+          response=$(curl -sS --fail-with-body -X POST https://rubygems.org/api/v1/oidc/trusted_publisher/exchange_token \
+            -H "content-type: application/json" -H "accept: application/json" \
+            -d "$(jq -n --arg jwt "$jwt" --arg owner "$RUBYGEMS_OWNER_ID" '{jwt: $jwt, owner: $owner}')") || {
+            echo "::error::Token exchange failed: $response"
+            exit 1
+          }
+          key=$(jq -r .rubygems_api_key <<< "$response")
+          echo "::add-mask::$key"
+          echo "GEM_HOST_API_KEY=$key" >> "$GITHUB_ENV"
 
       - name: Push to RubyGems
         run: gem push "trapline-$VERSION.gem"
