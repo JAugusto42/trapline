@@ -14,6 +14,7 @@ Gem::Specification.new do |spec|
     draft generator from CVEs (NVD + OSV) with per-CWE templates. It works as a
     CLI (`trapline server`), as a Rack app and mounted in a Rails app.
   DESC
+  spec.homepage = "https://github.com/JAugusto42/trapline"
   spec.license = "MIT"
   spec.required_ruby_version = ">= 3.3"
 
@@ -28,5 +29,7 @@ Gem::Specification.new do |spec|
   spec.add_development_dependency "rake", "~> 13.0"
 
   spec.requirements << "opengrep or semgrep on PATH to run rules"
+  spec.metadata["source_code_uri"] = spec.homepage
+  spec.metadata["bug_tracker_uri"] = "#{spec.homepage}/issues"
   spec.metadata["rubygems_mfa_required"] = "true"
 end

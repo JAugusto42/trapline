@@ -60,7 +60,7 @@ gem "trapline"
 Or build it from source:
 
 ```bash
-git clone <repository-url> trapline
+git clone https://github.com/JAugusto42/trapline.git
 cd trapline
 gem build trapline.gemspec
 gem install ./trapline-*.gem
@@ -567,6 +567,18 @@ lib/tasks/         rake trapline:test / trapline:validate
 ```
 
 To add a template, create `lib/trapline/templates/cwe/cwe-<n>.yml` with the rule body and annotated test code for each language. `test/test_templates.rb` runs every template through the engine, so the new one is covered automatically.
+
+### Releasing
+
+Pushing a `v*` tag runs `.github/workflows/release.yml`, which checks that the tag matches `Trapline::VERSION`, runs the tests with opengrep, publishes the gem to RubyGems and creates a GitHub release with the `.gem` attached:
+
+```bash
+# bump lib/trapline/version.rb, commit, then:
+git tag v0.1.0
+git push origin v0.1.0
+```
+
+Publishing uses [RubyGems trusted publishing](https://guides.rubygems.org/trusted-publishing/), so no API key is stored in the repository. It must be set up once on rubygems.org: as a pending trusted publisher for the first release, with repository `JAugusto42/trapline`, workflow `release.yml` and environment `release`.
 
 ## License
 
